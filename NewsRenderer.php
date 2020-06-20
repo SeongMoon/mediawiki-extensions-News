@@ -231,7 +231,7 @@ class NewsRenderer {
 	*/
 
 	function query( $dbr, $limit, $offset = 0 ) {
-		list( $trecentchanges, $tpage, $tcategorylinks ) = $dbr->tableNamesN( 'recentchanges', 'page', 'categorylinks' );
+		list( $trecentchanges, $tpage, $tcategorylinks ) = $dbr->tableNamesN( 'recentchanges', 'page', 'categorylinks');
 
 		$where = array();
 		$group = array();
@@ -242,11 +242,10 @@ class NewsRenderer {
 		if ( $this->categories ) {
 			$sql .= " JOIN $tpage ON page_namespace = rc_namespace AND page_title = rc_title ";
 			$sql .= " JOIN $tcategorylinks ON cl_from = page_id ";
-
 			$where[] = 'cl_to IN ( ' . $dbr->makeList( $this->categories ) . ' )';
 			$group[] = 'rc_id';
 		}
-
+		
 		if ( $this->nominor )  $where[] = 'rc_minor = 0';
 		if ( $this->nobot )  $where[] = 'rc_bot = 0';
 		if ( $this->noanon )  $where[] = 'rc_user > 0';
@@ -503,12 +502,18 @@ class NewsRenderer {
 			$params['minor'] = $row->rc_minor ? 'true' : '';
 			$params['bot'] = $row->rc_bot ? 'true' : '';
 			$params['patrolled'] = $row->rc_patrolled ? 'true' : '';
-			$params['anon'] = ( $row->rc_user <= 0 ) ? 'true' : ''; #XXX: perhaps use (rc_user == rc_ip) instead? That would take care of entries from importing.
+			$params['anon'] = ( $row->rc_actor <= 0 ) ? 'true' : ''; #XXX: perhaps use (rc_user == rc_ip) instead? That would take care of entries from importing.
 			$params['new'] = ( $row->rc_type == RC_NEW ) ? 'true' : '';
 
-			$params['type'] = $row->rc_type;
-			$params['user'] = $row->rc_user_text;
-
+			$params['type'] = $row->rc_type;			
+			$params['user'] = $row->rc_actor;
+			
+			$dbgetactorname = wfGetDB( DB_REPLICA );
+			$actornameres = $dbgetactorname->select('actor', 'actor_name', 'actor_id = ' . $row->rc_actor);				
+			foreach( $actornameres as $row1 ) {
+				$params['user'] = $row1->actor_name;
+			}
+			
 			$params['rawtime'] = $row->rc_timestamp;
 			$params['time'] = $wgLang->time( $row->rc_timestamp, true, true );
 			$params['date'] = $wgLang->date( $row->rc_timestamp, true, true );
@@ -526,7 +531,11 @@ class NewsRenderer {
 			$permaq = "oldid=" . $row->rc_this_oldid;
 			$params['permalink'] = $permaq ? $title->getFullURL( $permaq ) : '';
 
-			$params['comment'] = str_replace( array( '{{', '}}', '|', '\'' ), array( '&#123;&#123;', '&#125;&#125;', '&#124;', '$#39;' ), wfEscapeWikiText( $row->rc_comment ) );
+			$dbgetcomment = wfGetDB( DB_REPLICA );
+			$commentres = $dbgetcomment->select('comment', 'comment_text', 'comment_id = ' . $row->rc_comment_id);				
+			foreach( $commentres as $row2 ) {
+				$params['comment'] = str_replace( array( '{{', '}}', '|', '\'' ), array( '&#123;&#123;', '&#125;&#125;', '&#124;', '$#39;' ), wfEscapeWikiText( $row2->comment_text ) );
+			}
 
 			if ( stripos($templatetext, '{{{content}}}')!==false || stripos($templatetext, '{{{head}}}')!==false ) {
 				$article = new Article( $title, $row->rc_this_oldid );
